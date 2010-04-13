@@ -1,0 +1,35 @@
+TeamSpeakBfbc2 plugin for Big Brother Bot (www.bigbrotherbot.com)
+=================================================================
+
+By Courgette
+
+
+Description
+-----------
+
+This plugin will change BFBC2 players that are found on your teamspeak
+server to the relevant squad channel
+
+
+Changelog
+---------
+
+2010/04/13 - 1.0 - Courgette
+  first release. should do its job. waiting for feedbacks to stabalize code
+
+  
+
+Installation
+------------
+
+ * copy teamspeakbfbc2.py into b3/extplugins
+ * copy plugin_teamspeakbfbc2.xml into your B3 conf folder
+ * edit plugin_teamspeakbfbc2.xml with your teamspeak server information
+ * update your main b3 config file with :
+<plugin name="teamspeakbfbc2" priority="17" config="@conf/extplugins/plugin_teamspeakbfbc2.xml"/>
+
+
+Support
+-------
+
+see the B3 forums
