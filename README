@@ -8,7 +8,13 @@ Description
 -----------
 
 This plugin will change BFBC2 players that are found on your teamspeak
-server to the relevant squad channel
+server to the relevant team/squad channel.
+Player can disable this typing :
+  !tsauto off
+or enable team channel auto switch with :
+  !tsauto team
+or enable squad channel auto switch with :
+  !tsauto squad
 
 
 Changelog
@@ -16,6 +22,9 @@ Changelog
 
 2010/04/13 - 1.0 - Courgette
   first release. should do its job. waiting for feedbacks to stabalize code
+2010/04/14 - 1.1 - Courgette
+* add command !tsauto [off|team|squad] to give player the choice of disabling
+  auto channel switching or to activate it only for teams or squads
 
   
 
