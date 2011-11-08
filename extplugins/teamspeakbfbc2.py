@@ -128,6 +128,7 @@ class Teamspeakbfbc2Plugin(b3.plugin.Plugin):
         self.verbose('Registering events')
         #self.registerEvent(b3.events.EVT_CLIENT_TEAM_CHANGE)
         self.registerEvent(b3.events.EVT_CLIENT_SQUAD_CHANGE)
+        self.registerEvent(b3.events.EVT_CLIENT_AUTH)
     
         self.debug('Started')
 
@@ -209,22 +210,36 @@ class Teamspeakbfbc2Plugin(b3.plugin.Plugin):
         """\
         Handle intercepted events
         """
+        client = event.client
         if event.type == b3.events.EVT_STOP:
             self.tsDeleteChannels()
             self.tsconnection.disconnect()
-            
-        if self.connected == False:
+        elif self.connected is False:
             return
-#
-        if event.type in (b3.events.EVT_CLIENT_SQUAD_CHANGE, b3.events.EVT_CLIENT_TEAM_CHANGE):
-            client = event.client
-            if client:
-                try:
-                    self.moveClient(client)
-                except TS3Error, err:
-                    self.error(str(err))
+        elif event.type in (b3.events.EVT_CLIENT_SQUAD_CHANGE, b3.events.EVT_CLIENT_TEAM_CHANGE):
+            try:
+                self.moveClient(client)
+            except TS3Error, err:
+                self.error(str(err))
+        elif event.type == b3.events.EVT_CLIENT_AUTH and client:
+            try:
+                tsclient = self.tsGetClient(client)
+                if not tsclient:
+                    self.debug('cannot find %s client info from TS' % client.name)
+                else:
+                    if not self.tsIsClientInB3Channel(tsclient):
+                        ## we only act on players not found within the B3 channels
+                        self.debug('moving %s to B3 channel' % client.name)
+                        self.tsMoveTsclientToChannelId(tsclient, self.tsChannelIdB3)
+            except TS3Error, err:
+                self.error(str(err))
 
 
+    #===============================================================================
+    #
+    #    B3 Commands implementations
+    #
+    #===============================================================================
 
     def cmd_tsreconnect(self ,data , client, cmd=None):
         """\
@@ -316,6 +331,13 @@ class Teamspeakbfbc2Plugin(b3.plugin.Plugin):
                     client.message('You will be automatically switched on your squad channel')
                     self.moveClient(client)
 
+
+    #===============================================================================
+    #
+    #    Others
+    #
+    #===============================================================================
+
     def moveClient(self, client):
         """Move the client to its team or squad depending on his settings"""
         if client:
@@ -354,7 +376,13 @@ class Teamspeakbfbc2Plugin(b3.plugin.Plugin):
                     else:
                         self.debug('moving %s to B3 channel (unable to find team)' % client.cid)
                         self.tsMoveTsclientToChannelId(tsclient, self.tsChannelIdB3)
-    
+
+
+    #===========================================================================
+    #
+    # TeamSpeak related methods
+    #
+    #===========================================================================
 
     def tsSendCommand(self, cmd, parameter={}, option=[]):
         if self.connected:
@@ -368,7 +396,7 @@ class Teamspeakbfbc2Plugin(b3.plugin.Plugin):
             self.debug('TS command %s(%s) [#%s]' % (cmd, repr(parameter), numtries))
             return self.tsconnection.command(cmd, parameter, option)
         except TS3Error, err:
-            "Try to automatically recover from some frequent errors"
+            # Try to automatically recover from some frequent errors
             self.error("TS3 error : %s" % str(err))
             if err.code == 1024:
                 ## invalid serverID
@@ -388,7 +416,7 @@ class Teamspeakbfbc2Plugin(b3.plugin.Plugin):
         if self.tsconnection is not None:
             try:
                 self.tsconnection.disconnect()
-            except:
+            except Exception:
                 pass
             del self.tsconnection
 
@@ -526,7 +554,7 @@ class Teamspeakbfbc2Plugin(b3.plugin.Plugin):
         if clientlist:
             for c in clientlist:
                 nick = c['client_nickname'].lower()
-                if nick in (client.name.lower(), client.cid.lower()):
+                if nick in (client.name.lower()):
                     data = self.tsSendCommand('clientinfo', {'clid': c['clid']})
                     self.debug('client data : %s' % data)
                     data['clid'] = c['clid']
