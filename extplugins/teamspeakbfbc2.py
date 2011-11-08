@@ -26,7 +26,7 @@
 #   auto channel switching or to activate it only for teams or squads
 # 
 
-__version__ = '1.1'
+__version__ = '2.0dev1'
 __author__ = 'Courgette'
 
 import time, string
@@ -101,8 +101,8 @@ class Teamspeakbfbc2Plugin(b3.plugin.Plugin):
         Initialize plugin settings
         """
         
-        if self.console.gameName != 'bfbc2':
-            raise SystemExit('The Teamspeakbfbc2 plugin require the BFBC2 parser to run')
+        if self.console.gameName not in ('bfbc2', 'bf3'):
+            raise SystemExit('The Teamspeakbfbc2 plugin requires BFBC2 or BF3 parser')
 
         # get the admin plugin so we can register commands
         self._adminPlugin = self.console.getPlugin('admin')
@@ -146,12 +146,13 @@ class Teamspeakbfbc2Plugin(b3.plugin.Plugin):
         self.readConfig()
         
         try:
+            self.tsconnection = ServerQuery(self.TS3ServerIP, self.TS3QueryPort)
             self.tsConnect()
             self.tsInitChannels()
             for c in self.console.clients.getList():
                 self.moveClient(c)
         except TS3Error, err:
-            self.error(err)
+            self.error(str(err))
     
     def readConfig(self):
         try:
@@ -221,7 +222,7 @@ class Teamspeakbfbc2Plugin(b3.plugin.Plugin):
                 try:
                     self.moveClient(client)
                 except TS3Error, err:
-                    self.error(err)
+                    self.error(str(err))
 
 
 
@@ -233,10 +234,9 @@ class Teamspeakbfbc2Plugin(b3.plugin.Plugin):
             client.message('Reconnecting to TS on %s:%s ...' % (self.TS3ServerIP, self.TS3QueryPort))
             try:
                 self.tsConnect()
-                self.createChannel()
             except TS3Error, err:
                 client.message('Failed to connect : %s' % err.msg)
-                self.error(err)
+                self.error(str(err))
 
 
     def cmd_tsdisconnect(self ,data , client, cmd=None):
@@ -250,7 +250,7 @@ class Teamspeakbfbc2Plugin(b3.plugin.Plugin):
                 self.connected = False
             except TS3Error, err:
                 client.message('Failed to disconnect : %s' % err.msg)
-                self.error(err)
+                self.error(str(err))
 
 
     def cmd_teamspeak(self ,data , client, cmd=None):
@@ -301,7 +301,7 @@ class Teamspeakbfbc2Plugin(b3.plugin.Plugin):
                     infotxt += 'disabled'
             else:
                 if data not in ('off', 'team', 'squad'):
-                    self.debug("Invalid parameter. Expecting one of : 'off', 'team', 'squad'")
+                    client.message("Invalid parameter. Expecting one of : 'off', 'team', 'squad'")
                 elif data == 'off':
                     client.setvar(self, 'autoswitch', False)
                     client.message('You will not be automatically switched on teamspeak')
@@ -355,19 +355,34 @@ class Teamspeakbfbc2Plugin(b3.plugin.Plugin):
                         self.debug('moving %s to B3 channel (unable to find team)' % client.cid)
                         self.tsMoveTsclientToChannelId(tsclient, self.tsChannelIdB3)
     
+
     def tsSendCommand(self, cmd, parameter={}, option=[]):
         if self.connected:
-            try:
-                return self.tsconnection.command(cmd, parameter, option)
-            except TS3Error, err:
-                """Try to automatically recover from some frequent errors"""
-                if err.code == 1024:
-                    ## invalid serverID
-                    self.tsconnection.command('use', {'sid': self.TS3ServerID})
-                    return self.tsconnection.command(cmd, parameter, option)
-                else:
-                    raise err
-        
+            return self._tsSendCommand(cmd, parameter, option)
+
+    def _tsSendCommand(self, cmd, parameter, option, numtries=1):
+        if numtries > 3:
+            self.error("Too many tries. Could not send TS3 command %s(%s) " % (cmd, repr(parameter)))
+            return
+        try:
+            self.debug('TS command %s(%s) [#%s]' % (cmd, repr(parameter), numtries))
+            return self.tsconnection.command(cmd, parameter, option)
+        except TS3Error, err:
+            "Try to automatically recover from some frequent errors"
+            self.error("TS3 error : %s" % str(err))
+            if err.code == 1024:
+                ## invalid serverID
+                self.tsconnection.command('use', {'sid': self.TS3ServerID})
+                return self._tsSendCommand(cmd, parameter, option, numtries+1)
+            elif err.code == 12:
+                ## Bad TS3 response
+                self.tsConnect()
+                return self._tsSendCommand(cmd, parameter, option, numtries+1)
+            else:
+                raise
+        except telnetlib.socket.error, err:
+            self.tsConnect()
+            return self._tsSendCommand(cmd, parameter, option, numtries+1)
     
     def tsConnect(self):
         if self.tsconnection is not None:
@@ -376,13 +391,23 @@ class Teamspeakbfbc2Plugin(b3.plugin.Plugin):
             except:
                 pass
             del self.tsconnection
-            
+
+        self.connected = False
         self.tsconnection = ServerQuery(self.TS3ServerIP, self.TS3QueryPort)
         
         self.info('connecting to teamspeak server %s:%s' % (self.TS3ServerIP, self.TS3QueryPort))
         self.tsconnection.connect()
         
-        self.info('TS version : %s' % self.tsconnection.command('version'))
+        try:
+            versiondata = self.tsconnection.command('version')
+        except TS3Error, err:
+            if err.code == 3329:
+                ## give a bit a guidance to the user in such case
+                self.warning("B3 is banned from the TS3 server. Make sure you add the B3 ip to your TS3 server white list (query_ip_whitelist.txt)")
+            raise
+        self.info('TS version : %s' % versiondata)
+        if not versiondata['version'].startswith('3.'):
+            self.warning("This plugin is meant to work with a TeamSpeak 3 server")
         
         self.info('Loging to TS server with login name \'%s\'' % self.TS3Login)
         self.tsconnection.command('login', {'client_login_name': self.TS3Login, 'client_login_password': self.TS3Password})
@@ -393,7 +418,7 @@ class Teamspeakbfbc2Plugin(b3.plugin.Plugin):
         self.tsconnection.command('use', {'sid': self.TS3ServerID})
         
         self.info('Get server port')
-        serverinfo = self.tsSendCommand('serverinfo')
+        serverinfo = self.tsconnection.command('serverinfo')
         self.debug(serverinfo)
         self.tsServerPort = serverinfo['virtualserver_port']
         self.info('TS server port is %s', self.tsServerPort)
@@ -512,7 +537,11 @@ class Teamspeakbfbc2Plugin(b3.plugin.Plugin):
     def tsMoveTsclientToChannelId(self, tsclient, tsChannelId):
         if tsclient and self.connected:
             if tsclient['cid'] != tsChannelId:
-                self.tsSendCommand('clientmove', {'clid': tsclient['clid'], 'cid': tsChannelId})
+                try:
+                    self.tsSendCommand('clientmove', {'clid': tsclient['clid'], 'cid': tsChannelId})
+                except TS3Error, err:
+                    if not err.code == 770: ## client already in channel
+                        raise
  
     def tsIsClientInB3Channel(self, tsclient):
         """Return True if the client is found in the B3 channel or one of
@@ -578,14 +607,14 @@ import time
 
 
 class TS3Error(Exception):
-    code = None
-    msg = None
-    def __init__(self, code, msg):
+    def __init__(self, code, msg, msg2):
+        Exception.__init__(self)
         self.code = code
         self.msg = msg
+        self.msg2 = msg2
 
     def __str__(self):
-        return "ID %s (%s)" % (self.code, self.msg)
+        return "ID %s (%s) %s" % (self.code, self.msg, self.msg2)
 
 
 class ServerQuery():
@@ -603,6 +632,7 @@ class ServerQuery():
         self.IP = ip
         self.Query = int(query)
         self.Timeout = 5.0
+        lock = thread.allocate_lock()
 
     def connect(self):
         """
@@ -611,8 +641,8 @@ class ServerQuery():
         """
         try:
             self.telnet = telnetlib.Telnet(self.IP, self.Query)
-        except telnetlib.socket.error:
-            raise TS3Error(10, 'Can not open a link on the port or IP')
+        except telnetlib.socket.error, err:
+            raise TS3Error(10, 'Can not open a link on the port or IP', err)
         output = self.telnet.read_until('TS3', self.Timeout)
         if output.endswith('TS3') == False:
             raise TS3Error(20, 'This is not a Teamspeak 3 Server')
@@ -682,9 +712,10 @@ class ServerQuery():
         for i in option:
             telnetCMD += " -%s" % (i)
         telnetCMD += '\n'
-        self.telnet.write(telnetCMD)
 
-        telnetResponse = self.telnet.read_until("msg=ok", self.Timeout)
+        with self.lock:
+            self.telnet.write(telnetCMD)
+            telnetResponse = self.telnet.read_until("msg=ok", self.Timeout)
         telnetResponse = telnetResponse.split(r'error id=')
         notParsedCMDStatus = "id=" + telnetResponse[1]
         notParsedInfo = telnetResponse[0].split('|')
@@ -712,7 +743,7 @@ class ServerQuery():
             ReturnCMDStatus[ParsedCMDStatusLine[0]] = self.escaping2string(
                 ParsedCMDStatusLine[1])
         if ReturnCMDStatus['id'] != 0:
-            raise TS3Error(ReturnCMDStatus['id'], ReturnCMDStatus['msg'])
+            raise TS3Error(ReturnCMDStatus['id'], ReturnCMDStatus['msg'], ReturnCMDStatus)
 
         return returnInfo
 
@@ -727,9 +758,7 @@ class ServerNotification(ServerQuery):
         @param query: Query Port of the TS3 Server. Default 10011
         @type query: int
         """
-        self.IP = ip
-        self.Query = int(query)
-        self.Timeout = 5.0
+        ServerQuery.__init__(self, ip, query)
         self.LastCommand = 0
 
         self.Lock = thread.allocate_lock()
@@ -883,6 +912,36 @@ if __name__ == '__main__':
     import unittest
     
     class TestTeamspeakbfbc2(unittest.TestCase):
+        def test_cmd_ts(self):
+            joe.clearMessageHistory()
+            joe.says('!ts')
+            self.assertNotEqual(0, len(joe.message_history))
+
+        def test_cmd_tsauto(self):
+            joe.clearMessageHistory()
+            joe.says('!tsauto')
+            self.assertNotEqual(0, len(joe.message_history))
+
+            joe.clearMessageHistory()
+            joe.says('!tsauto off')
+            self.assertNotEqual(0, len(joe.message_history))
+            self.assertEqual('You will not be automatically switched on teamspeak', joe.getMessageHistoryLike('You will'))
+
+            joe.clearMessageHistory()
+            joe.says('!tsauto on')
+            self.assertNotEqual(0, len(joe.message_history))
+            self.assertEqual('You will be automatically switched on your team channel', joe.getMessageHistoryLike('You will'))
+
+            joe.clearMessageHistory()
+            joe.says('!tsauto qsdfqsd f')
+            self.assertNotEqual(0, len(joe.message_history))
+            self.assertNotEqual(None, joe.getMessageHistoryLike('Invalid parameter'))
+
+            joe.clearMessageHistory()
+            joe.says('!tsauto    ')
+            self.assertNotEqual(0, len(joe.message_history))
+            self.assertNotEqual(None, joe.getMessageHistoryLike('Invalid parameter'))
+
         def test_teamMisc(self):
             joe.team = b3.TEAM_SPEC
             joe.setvar(p, 'switchtarget', 'team')
