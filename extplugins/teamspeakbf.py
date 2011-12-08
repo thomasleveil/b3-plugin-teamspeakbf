@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 #
-# PowerAdmin Plugin for BigBrotherBot(B3) (www.bigbrotherbot.com)
-# Copyright (C) 2008 Mark Weirath (xlr8or@xlr8or.com)
+# TeamSpeak Plugin for BigBrotherBot(B3) (www.bigbrotherbot.net)
+# Copyright (C) 2011 Courgette (courgette@bigbrotherbot.net)
 # 
 # This program is free software; you can redistribute it and/or modify
 # it under the terms of the GNU General Public License as published by
@@ -24,19 +24,20 @@
 # 2010/04/14 - 1.1 - Courgette
 # * add command !tsauto [off|team|squad] to give player the choice of disabling
 #   auto channel switching or to activate it only for teams or squads
-# 
-
-__version__ = '2.0dev1'
+# 2011/12/08 - 2.0
+# * rename plugin from teamspeakbfbc2 to teamspeakbf
+# * can recognize players on teamspeak based on their IP address
+# * handle BF3 SQDM game mode (4 teams of 1 squad each)
+#
+__version__ = '2.0'
 __author__ = 'Courgette'
 
-import time, string
 import b3
 import b3.events
 import b3.plugin
-import string
 
 #--------------------------------------------------------------------------------------------------
-class Teamspeakbfbc2Plugin(b3.plugin.Plugin):
+class TeamspeakbfPlugin(b3.plugin.Plugin):
 
     connected = False
 
@@ -50,13 +51,14 @@ class Teamspeakbfbc2Plugin(b3.plugin.Plugin):
     TS3ChannelB3 = 'B3 autoswitched channels'
     TS3ChannelTeam1 = 'Team A'
     TS3ChannelTeam2 = 'Team B'
-    
+
     
     tsconnection = None
     tsServerPort = 'unknown'
     
     
     squadNames = {
+        0: 'no squad',
         1: 'Alpha',
         2: 'Bravo',
         3: 'Charlie',
@@ -75,6 +77,7 @@ class Teamspeakbfbc2Plugin(b3.plugin.Plugin):
     tsChannelIdTeam2 = None
 
     tsChannelIdSquadsTeam1 = {
+        0: None,
         1: None,
         2: None,
         3: None,
@@ -85,6 +88,7 @@ class Teamspeakbfbc2Plugin(b3.plugin.Plugin):
         8: None,
     }
     tsChannelIdSquadsTeam2 = {
+        0: None,
         1: None,
         2: None,
         3: None,
@@ -95,14 +99,13 @@ class Teamspeakbfbc2Plugin(b3.plugin.Plugin):
         8: None,
     }
 
-
     def startup(self):
         """\
         Initialize plugin settings
         """
         
         if self.console.gameName not in ('bfbc2', 'bf3'):
-            raise SystemExit('The Teamspeakbfbc2 plugin requires BFBC2 or BF3 parser')
+            raise SystemExit('The Teamspeakbf plugin requires BFBC2 or BF3 games')
 
         # get the admin plugin so we can register commands
         self._adminPlugin = self.console.getPlugin('admin')
@@ -228,9 +231,13 @@ class Teamspeakbfbc2Plugin(b3.plugin.Plugin):
                     self.debug('cannot find %s client info from TS' % client.name)
                 else:
                     if not self.tsIsClientInB3Channel(tsclient):
-                        ## we only act on players not found within the B3 channels
-                        self.debug('moving %s to B3 channel' % client.name)
-                        self.tsMoveTsclientToChannelId(tsclient, self.tsChannelIdB3)
+                        teamspeak_cmd =  self._adminPlugin._commands['teamspeak']
+                        command_name = teamspeak_cmd.alias if teamspeak_cmd.alias else 'teamspeak'
+                        if self.tsIsClientInB3Channel(tsclient):
+                            self.tsTellClient(tsclient['clid'], "Hi, %s found you on our \"%s\" gameserver. Type !%s in game to unlink B3 and TS3" % (self.console.name, self.console.game.sv_hostname, command_name))
+                        else:
+                            self.tsTellClient(tsclient['clid'], "Hi, %s found you on our \"%s\" gameserver. Type !%s in game to link B3 and TS3" % (self.console.name, self.console.game.sv_hostname, command_name))
+                        self.tsTellClient(tsclient['clid'], "Join the \"%s\" channel" % self.TS3ChannelB3)
             except TS3Error, err:
                 self.error(str(err))
 
@@ -277,25 +284,34 @@ class Teamspeakbfbc2Plugin(b3.plugin.Plugin):
                 tsclient = self.tsGetClient(client)
                 if tsclient is None:
                     client.message('Join our Teamspeak server on %s:%s' % (self.TS3ServerIP, self.tsServerPort))
-                    client.message('Use the same name on Teamspeak as in game to be auto switch to the right channel')
+                    if not hasattr(client, 'ip') or not client.ip:
+                        client.message('Use the same name on Teamspeak as in game to be auto switch to the right channel')
                 else:
                     client.message('You are connected on our Teamspeak server')
+                    if data == 'join':
+                        client.setvar(self, 'original_ts_channel', tsclient['cid'])
+                        self.tsMoveTsclientToChannelId(tsclient, self.tsChannelIdB3)
+                        tsclient['cid'] = self.tsChannelIdB3
+                    elif data == 'disjoin':
+                        original_channel = client.var(self, 'original_ts_channel', 1).value
+                        self.tsMoveTsclientToChannelId(tsclient, original_channel)
+                        tsclient['cid'] = original_channel
                     if not self.tsIsClientInB3Channel(tsclient):
-                        client.message('If you want to be switched automatically to your team/squad channel, enter the %s channel' % self.TS3ChannelB3)
+                        client.message('If you want to be switched automatically to your team/squad channel, enter the %s channel or type !teamspeak join' % self.TS3ChannelB3)
                     else:
+                        client.message('If you want to be leave the "%s" TS channel, !teamspeak disjoin' % self.TS3ChannelB3)
                         autoswitch = client.var(self, 'autoswitch', self.autoswitchDefault).value
                         if autoswitch is False:
-                            client.message('You will not be switched automatically to your team/squad channel')
-                            client.message('To get switched your team channel, type : !tsauto on')
+                            client.message('You are not in auto-switch mode. To be automatically switched to your team channel, type !tsauto on')
                         else:
                             switchtarget = client.var(self, 'switchtarget', self.autoswitchDefaultTarget).value
                             self.debug('switchtarget: %s' % switchtarget)
                             if switchtarget == 'squad':
-                                client.message('You will be switched automatically to your squad channel')
+                                client.message('You are in auto-switch squad mode')
                                 client.message('type: "!tsauto team" to get switched to your team channel instead')
                                 client.message('type: "!tsauto off" to disable TeamSpeak autoswitch')
                             else:
-                                client.message('You will be switched automatically to your team channel')
+                                client.message('You are in auto-switch team mode')
                                 client.message('type: "!tsauto squad" to get switched to your squad channel instead')
                                 client.message('type: "!tsauto off" to disable TeamSpeak autoswitch')
             else:
@@ -314,6 +330,7 @@ class Teamspeakbfbc2Plugin(b3.plugin.Plugin):
                     infotxt += 'enabled in %s mode' % switchtarget
                 else:
                     infotxt += 'disabled'
+                client.message(infotxt)
             else:
                 if data not in ('off', 'team', 'squad'):
                     client.message("Invalid parameter. Expecting one of : 'off', 'team', 'squad'")
@@ -354,28 +371,43 @@ class Teamspeakbfbc2Plugin(b3.plugin.Plugin):
                     ## we only act on players found on within the B3 channel
                     self.debug('%s is not in the autoswitched B3 channel' % client.cid)
                     return
+                def is_squad_death_match():
+                    if self.console.gameName == 'bf3' and self.console.game.gameType == 'SquadDeathMatch0':
+                        # in this game mode there are only 4 squads fighting each others which are in fact
+                        # 4 teams. Players are always in squad 1 and teamID can be 1, 2, 3 or 4
+                        if client.teamId not in (1, 2, 3 , 4):
+                            self.debug('moving %s to B3 channel (unable to find team %s/%s)' % (client.cid, client.teamId, client.squad))
+                            self.tsMoveTsclientToChannelId(tsclient, self.tsChannelIdB3)
+                        else:
+                            self.debug('moving %s to team%s channel' % (client.cid, client.teamId))
+                            self.tsMoveTsclientToChannelId(tsclient, self.tsChannelIdSquadsTeam1[int(client.teamId)])
+                        return True
+                    else:
+                        return False
                 if switchtarget == 'team':
-                    if client.team == b3.TEAM_BLUE:
-                        self.debug('moving %s to team1 channel' % client.cid)
-                        self.tsMoveTsclientToChannelId(tsclient, self.tsChannelIdTeam1)
-                    elif client.team == b3.TEAM_RED:
-                        self.debug('moving %s to team2 channel' % client.cid)
-                        self.tsMoveTsclientToChannelId(tsclient, self.tsChannelIdTeam2)
-                    else:
-                        self.debug('moving %s to B3 channel' % client.cid)
-                        self.tsMoveTsclientToChannelId(tsclient, self.tsChannelIdB3)
+                    if not is_squad_death_match():
+                        if client.team == b3.TEAM_BLUE:
+                            self.debug('moving %s to team1 channel' % client.cid)
+                            self.tsMoveTsclientToChannelId(tsclient, self.tsChannelIdTeam1)
+                        elif client.team == b3.TEAM_RED:
+                            self.debug('moving %s to team2 channel' % client.cid)
+                            self.tsMoveTsclientToChannelId(tsclient, self.tsChannelIdTeam2)
+                        else:
+                            self.debug('moving %s to B3 channel' % client.cid)
+                            self.tsMoveTsclientToChannelId(tsclient, self.tsChannelIdB3)
                 elif switchtarget == 'squad':
-                    if client.team == b3.TEAM_BLUE:
-                        self.debug('moving %s to his Team1 squad channel' % client.cid)
-                        cid = self.tsChannelIdSquadsTeam1[int(client.squad)]
-                        self.tsMoveTsclientToChannelId(tsclient, cid)
-                    elif client.team == b3.TEAM_RED:
-                        self.debug('moving %s to his Team2 squad channel' % client.cid)
-                        cid = self.tsChannelIdSquadsTeam2[int(client.squad)]
-                        self.tsMoveTsclientToChannelId(tsclient, cid)
-                    else:
-                        self.debug('moving %s to B3 channel (unable to find team)' % client.cid)
-                        self.tsMoveTsclientToChannelId(tsclient, self.tsChannelIdB3)
+                    if not is_squad_death_match():
+                        if client.team == b3.TEAM_BLUE:
+                            self.debug('moving %s to his Team1 squad channel' % client.cid)
+                            cid = self.tsChannelIdSquadsTeam1[int(client.squad)]
+                            self.tsMoveTsclientToChannelId(tsclient, cid)
+                        elif client.team == b3.TEAM_RED:
+                            self.debug('moving %s to his Team2 squad channel' % client.cid)
+                            cid = self.tsChannelIdSquadsTeam2[int(client.squad)]
+                            self.tsMoveTsclientToChannelId(tsclient, cid)
+                        else:
+                            self.debug('moving %s to B3 channel (unable to find team %s/%s)' % (client.cid, client.team, client.squad))
+                            self.tsMoveTsclientToChannelId(tsclient, self.tsChannelIdB3)
 
 
     #===========================================================================
@@ -406,6 +438,10 @@ class Teamspeakbfbc2Plugin(b3.plugin.Plugin):
                 ## Bad TS3 response
                 self.tsConnect()
                 return self._tsSendCommand(cmd, parameter, option, numtries+1)
+            elif err.code == 3331:
+                ## Flood ban
+                self.error("The teamspeak server banned B3 for flooding commands. Add B3 ip to the teamspeak server whitelist file called query_ip_whitelist.txt")
+                return
             else:
                 raise
         except telnetlib.socket.error, err:
@@ -456,7 +492,6 @@ class Teamspeakbfbc2Plugin(b3.plugin.Plugin):
         channellist = self.tsSendCommand('channellist')
         self.debug('channellist : %s' % channellist)
         
-        
         self.tsChannelIdB3 = self.tsGetChannelIdByName(self.TS3ChannelB3, channellist)
         if self.tsChannelIdB3 is None:
             self.info('creating channel [%s]' % self.TS3ChannelB3)
@@ -476,7 +511,7 @@ class Teamspeakbfbc2Plugin(b3.plugin.Plugin):
                                                                , 'channel_flag_semi_permanent': 1})
             self.debug(response)
             self.tsChannelIdTeam1 = response['cid']
-        
+        self.tsChannelIdSquadsTeam1[0] = self.tsChannelIdTeam1
         
         self.tsChannelIdTeam2 = self.tsGetChannelIdByName(self.TS3ChannelTeam2, channellist, self.tsChannelIdB3)
         if self.tsChannelIdTeam2 is None:
@@ -487,7 +522,7 @@ class Teamspeakbfbc2Plugin(b3.plugin.Plugin):
                                                                , 'channel_flag_semi_permanent': 1})
             self.debug(response)
             self.tsChannelIdTeam2 = response['cid']
-
+        self.tsChannelIdSquadsTeam2[0] = self.tsChannelIdTeam2
         
         for i in range(1, 9):
             self.tsChannelIdSquadsTeam1[i] = self.tsGetChannelIdByName(self.squadNames[i], channellist, self.tsChannelIdTeam1)
@@ -551,14 +586,30 @@ class Teamspeakbfbc2Plugin(b3.plugin.Plugin):
             return None
         clientlist = self.tsSendCommand('clientlist')
         self.debug('clientlist: %s' % clientlist)
-        if clientlist:
+        if client.ip is not None:
+            clients_info = {}
+            matches_by_ip = []
+            matches_by_name = []
+
             for c in clientlist:
-                nick = c['client_nickname'].lower()
+                clid = c['clid']
+                clients_info[clid] = info = self.tsSendCommand('clientinfo', {'clid': clid})
+                if client.ip and 'connection_client_ip' in info and info['connection_client_ip'] == client.ip:
+                    matches_by_ip.append(clid)
+                nick = info['client_nickname'].lower()
                 if nick in (client.name.lower()):
-                    data = self.tsSendCommand('clientinfo', {'clid': c['clid']})
-                    self.debug('client data : %s' % data)
-                    data['clid'] = c['clid']
-                    return data
+                    matches_by_name.append(clid)
+
+            found_client_data = None
+            if len(matches_by_ip) == 1:
+                self.verbose("found teamspeak client by ip (%s)" % client.ip)
+                found_client_data = clients_info[matches_by_ip[0]]
+                found_client_data['clid'] = matches_by_ip[0]
+            else:
+                if len(matches_by_name) > 0:
+                    found_client_data = clients_info[matches_by_name[0]]
+                    found_client_data['clid'] = matches_by_name[0]
+            return found_client_data
         return None
     
         
@@ -604,8 +655,11 @@ class Teamspeakbfbc2Plugin(b3.plugin.Plugin):
                 return True
         return False
     
-        
-    
+
+    def tsTellClient(self, clid, msg):
+        """Send a private message to a TS3 client"""
+        self.tsSendCommand('sendtextmessage', {'targetmode': 3, 'target': clid, 'msg': "[%s] %s" % (self.console.name, msg)})
+
     
 ##################################################################################################
 # Copyright (c) 2009 Christoph Heer (Christoph.Heer@googlemail.com)
@@ -660,7 +714,7 @@ class ServerQuery():
         self.IP = ip
         self.Query = int(query)
         self.Timeout = 5.0
-        lock = thread.allocate_lock()
+        self.lock = thread.allocate_lock()
 
     def connect(self):
         """
@@ -672,7 +726,7 @@ class ServerQuery():
         except telnetlib.socket.error, err:
             raise TS3Error(10, 'Can not open a link on the port or IP', err)
         output = self.telnet.read_until('TS3', self.Timeout)
-        if output.endswith('TS3') == False:
+        if not output.endswith('TS3'):
             raise TS3Error(20, 'This is not a Teamspeak 3 Server')
         else:
             return True
@@ -713,7 +767,9 @@ class ServerQuery():
         @type string: str
         @return: A string with escaping of TS3 Query.
         """
-        if type(string) == type(int()):
+        if string is None:
+            return ""
+        elif type(string) == type(int()):
             string = str(string)
         else:
             string = string.encode("utf-8")
@@ -847,193 +903,3 @@ class ServerNotification(ServerQuery):
     def unregisterEvent(self):
         self.command('servernotifyunregister')
         
-
-##################################################################################################
-
-
-if __name__ == '__main__':
-    from b3.fake import fakeConsole
-    from b3.fake import joe
-    import time
-    
-    from b3.config import XmlConfigParser
-    
-    conf = XmlConfigParser()
-    conf.setXml("""
-    <configuration plugin="teamspeakbfbc2">
-        <settings name="teamspeakServer">
-            <!-- IP or domain where your teamspeak server is hosted -->
-            <set name="host">localhost</set>
-            <!-- query port of your teamspeak server (default: 10011) -->
-            <set name="queryport">10011</set>
-            <!-- Teamspeak virtual server ID -->
-            <set name="id">1</set>
-            <!-- B3 login information. You need to create a ServerQuery Login for B3 -->
-            <set name="login">b3test</set>
-            <set name="password">LXDHOJyb</set>
-        </settings>
-        <settings name="teamspeakChannels">
-            <set name="B3">B3 channel</set>
-            <set name="team1">Team Alpha</set>
-            <set name="team2">Team Bravo</set>
-        </settings>
-        <settings name="commands">
-            <!-- set here levels needed to be allowed to use commands.
-                You can define a command alias adding '-' and the alias after the command name.
-                Levels:
-                0 : everyone
-                1 : registered users
-                2 : regular users
-                20 : moderators
-                40 : admins
-                60 : full admins
-                80 : senior admins
-                100 : super admins
-            -->
-            
-            <!-- Allow admins to reconnect/disconnect B3 to the teamspeak server -->
-            <set name="tsreconnect">100</set>
-            <set name="tsdisconnect">100</set>
-            
-            <!-- give the player info about the current Teamspeak server and his status -->
-            <set name="teamspeak-ts">1</set>
-            
-            <!-- !tsauto allow players to change their autoswitch preferences between one
-            of 'off', 'team', 'squad' -->
-            <set name="tsauto">1</set>
-        </settings>
-    </configuration>
-    """)
-
-    ## add BFBC2 specific events we'd like to test on this fake console
-    fakeConsole.Events.createEvent('EVT_CLIENT_SQUAD_CHANGE', 'Client Squad Change')
-    fakeConsole.gameName = 'bfbc2'
-    
-    ## create an instance of the plugin to test
-    p = Teamspeakbfbc2Plugin(fakeConsole, conf)
-    p.onStartup()
-
-    joe.team = b3.TEAM_UNKNOWN
-    joe.squad = -1
-    joe.connects('Joe')
-    
-    joe.says("!ts")
-    time.sleep(2)
-    
-    joe.cid = 'Courgette'
-    joe.says("!ts")
-    time.sleep(2)
-    
-    joe.says('!tsauto off')
-    joe.says('!ts')
-    time.sleep(2)
-    
-    joe.says('!tsauto team')
-    joe.says('!ts')
-    time.sleep(2)
-    
-    joe.says('!tsauto squad')
-    joe.says('!ts')
-    time.sleep(2)
-    
-    
-    import unittest
-    
-    class TestTeamspeakbfbc2(unittest.TestCase):
-        def test_cmd_ts(self):
-            joe.clearMessageHistory()
-            joe.says('!ts')
-            self.assertNotEqual(0, len(joe.message_history))
-
-        def test_cmd_tsauto(self):
-            joe.clearMessageHistory()
-            joe.says('!tsauto')
-            self.assertNotEqual(0, len(joe.message_history))
-
-            joe.clearMessageHistory()
-            joe.says('!tsauto off')
-            self.assertNotEqual(0, len(joe.message_history))
-            self.assertEqual('You will not be automatically switched on teamspeak', joe.getMessageHistoryLike('You will'))
-
-            joe.clearMessageHistory()
-            joe.says('!tsauto on')
-            self.assertNotEqual(0, len(joe.message_history))
-            self.assertEqual('You will be automatically switched on your team channel', joe.getMessageHistoryLike('You will'))
-
-            joe.clearMessageHistory()
-            joe.says('!tsauto qsdfqsd f')
-            self.assertNotEqual(0, len(joe.message_history))
-            self.assertNotEqual(None, joe.getMessageHistoryLike('Invalid parameter'))
-
-            joe.clearMessageHistory()
-            joe.says('!tsauto    ')
-            self.assertNotEqual(0, len(joe.message_history))
-            self.assertNotEqual(None, joe.getMessageHistoryLike('Invalid parameter'))
-
-        def test_teamMisc(self):
-            joe.team = b3.TEAM_SPEC
-            joe.setvar(p, 'switchtarget', 'team')
-            fakeConsole.queueEvent(b3.events.Event(b3.events.EVT_CLIENT_SQUAD_CHANGE, (joe.team, joe.squad), joe))
-            time.sleep(.2)
-            tsclient = p.tsGetClient(joe)
-            self.assertNotEqual(tsclient, None)
-            self.assertEqual(tsclient['cid'], p.tsChannelIdB3)
-
-        def test_team1(self):
-            joe.team = b3.TEAM_BLUE
-            joe.squad = 0
-            joe.setvar(p, 'switchtarget', 'team')
-            fakeConsole.queueEvent(b3.events.Event(b3.events.EVT_CLIENT_SQUAD_CHANGE, (joe.team, joe.squad), joe))
-            time.sleep(.2)
-            tsclient = p.tsGetClient(joe)
-            self.assertNotEqual(tsclient, None)
-            self.assertEqual(tsclient['cid'], p.tsChannelIdTeam1)
-        
-        def test_team2(self):
-            joe.team = b3.TEAM_RED
-            joe.squad = 0
-            joe.setvar(p, 'switchtarget', 'team')
-            fakeConsole.queueEvent(b3.events.Event(b3.events.EVT_CLIENT_SQUAD_CHANGE, (joe.team, joe.squad), joe))
-            time.sleep(.2)
-            tsclient = p.tsGetClient(joe)
-            self.assertNotEqual(tsclient, None)
-            self.assertNotEqual(tsclient, None)
-            self.assertEqual(tsclient['cid'], p.tsChannelIdTeam2)
-
-        def test_squadsTeam1(self):
-            joe.team = b3.TEAM_BLUE
-            joe.setvar(p, 'switchtarget', 'squad')
-            for i in range(1, 9):
-                joe.squad = i
-                fakeConsole.queueEvent(b3.events.Event(b3.events.EVT_CLIENT_SQUAD_CHANGE, (joe.team, joe.squad), joe))
-                time.sleep(.2)
-                tsclient = p.tsGetClient(joe)
-                self.assertNotEqual(tsclient, None)
-                self.assertEqual(tsclient['cid'], p.tsChannelIdSquadsTeam1[i])
-
-        def test_squadsTeam2(self):
-            joe.team = b3.TEAM_RED
-            joe.setvar(p, 'switchtarget', 'squad')
-            for i in range(1, 9):
-                joe.squad = i
-                fakeConsole.queueEvent(b3.events.Event(b3.events.EVT_CLIENT_SQUAD_CHANGE, (joe.team, joe.squad), joe))
-                time.sleep(.2)
-                tsclient = p.tsGetClient(joe)
-                self.assertNotEqual(tsclient, None)
-                self.assertEqual(tsclient['cid'], p.tsChannelIdSquadsTeam2[i])
-    
-    def donothing(*whatever):
-        pass
-    fakeConsole.error = donothing
-    fakeConsole.debug = donothing
-    fakeConsole.bot = donothing
-    fakeConsole.verbose = donothing
-    fakeConsole.verbose2 = donothing
-    fakeConsole.console = donothing
-    fakeConsole.warning = donothing
-    fakeConsole.info = donothing
-    fakeConsole.exception = donothing
-    fakeConsole.critical = donothing
-    
-    joe.says('!tsauto squad')
-    unittest.main()

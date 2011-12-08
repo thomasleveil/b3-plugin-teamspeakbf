@@ -1,0 +1,11 @@
+[teamspeak_server]
+# Teamspeak server data
+host=127.0.0.1
+port=10011
+id=1
+login=b3test
+password=xxxxxxxxx
+
+[me]
+# the IP address you are connecting from when you join the Teamspeak server
+ip=xx.xx.xx.xx

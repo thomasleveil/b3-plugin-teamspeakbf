@@ -1,5 +1,5 @@
-TeamSpeakBfbc2 plugin for Big Brother Bot (www.bigbrotherbot.com)
-=================================================================
+TeamSpeakBf plugin for Big Brother Bot (www.bigbrotherbot.net)
+==============================================================
 
 By Courgette
 
@@ -7,38 +7,55 @@ By Courgette
 Description
 -----------
 
-This plugin will change BFBC2 players that are found on your teamspeak
+This plugin will change BFBC2 / BF3 players that are found on your teamspeak
 server to the relevant team/squad channel.
-Player can disable this typing :
-  !tsauto off
-or enable team channel auto switch with :
-  !tsauto team
-or enable squad channel auto switch with :
-  !tsauto squad
+
+Player commands
+---------------
+ !teamspeak    : give info about the Teamspeak server (ip:port) and instruction on how to use this plugin
+ !ts           : alias for !teamspeak
+ !ts join      : moves you to the B3 managed channel on TS
+ !ts disjoin   : moves you back out of the B3 managed channel on TS
+ !tsauto off   : disable auto channel changes
+ !tsauto team  : make B3 automatically change you to your team channel when you change teams in game
+ !tsauto squad : make B3 automatically change you to your squad channel when you change squad or team in game
+ !tsa          : alias for !tsauto
+
+
+Admin commands
+--------------
+ !tsreconnect : force B3 to reconnect to the TeamSpeak server
+ !tsdisconnect : disconnect B3 from the TeamSpeak server
 
 
 Changelog
 ---------
 
-2010/04/13 - 1.0 - Courgette
-  first release. should do its job. waiting for feedbacks to stabalize code
-2010/04/14 - 1.1 - Courgette
-* add command !tsauto [off|team|squad] to give player the choice of disabling
-  auto channel switching or to activate it only for teams or squads
+ 2010/04/13 - 1.0
+  * first release. should do its job. waiting for feedbacks to stabalize code
 
+ 2010/04/14 - 1.1
+  * add command !tsauto [off|team|squad] to give player the choice of disabling
+  * auto channel switching or to activate it only for teams or squads
+
+ 2011/12/08 - 2.0
+  * rename plugin from teamspeakbfbc2 to teamspeakbf
+  * add support for BF3
+  * can recognize players on Teamspeak based on their IP address instead of relying only on name
+  * handles BF3 Squad Death Match game mode
   
 
 Installation
 ------------
 
- * copy teamspeakbfbc2.py into b3/extplugins
- * copy plugin_teamspeakbfbc2.xml into your B3 conf folder
- * edit plugin_teamspeakbfbc2.xml with your teamspeak server information
+ * copy teamspeakbf.py into b3/extplugins
+ * copy plugin_teamspeakbf.xml into your B3 conf folder
+ * edit plugin_teamspeakbf.xml with your teamspeak server information
  * update your main b3 config file with :
-<plugin name="teamspeakbfbc2" priority="17" config="@conf/extplugins/plugin_teamspeakbfbc2.xml"/>
+<plugin name="teamspeakbf" config="@conf/extplugins/plugin_teamspeakbf.xml"/>
 
 
 Support
 -------
 
-see the B3 forums
+see the B3 forums : http://forum.bigbrotherbot.net/plugins-by-courgette/teamspeak-battlefield/
