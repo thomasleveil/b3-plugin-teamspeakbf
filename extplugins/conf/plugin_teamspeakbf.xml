@@ -1,4 +1,4 @@
-<configuration plugin="teamspeakbfbc2">
+<configuration plugin="teamspeakbf">
 	<settings name="teamspeakServer">
 		<!-- IP or domain where your teamspeak server is hosted -->
 		<set name="host">127.0.0.1</set>
