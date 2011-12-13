@@ -44,6 +44,10 @@ Changelog
   * can recognize players on Teamspeak based on their IP address instead of relying only on name
   * handles BF3 Squad Death Match game mode
   
+ 2011/12/14 - 2.1
+  * fix crash when trying to delete TS channels having users
+  * ServerQuery is now more reactive when receiving a error as response
+
 
 Installation
 ------------
