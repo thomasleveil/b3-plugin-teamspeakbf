@@ -28,8 +28,11 @@
 # * rename plugin from teamspeakbfbc2 to teamspeakbf
 # * can recognize players on teamspeak based on their IP address
 # * handle BF3 SQDM game mode (4 teams of 1 squad each)
+# 2011/12/14 - 2.1
+# * fix crash when trying to delete TS channels having users
+# * ServerQuery is now more reactive when receiving a error as response
 #
-__version__ = '2.0'
+__version__ = '2.1'
 __author__ = 'Courgette'
 
 import b3
@@ -215,8 +218,12 @@ class TeamspeakbfPlugin(b3.plugin.Plugin):
         """
         client = event.client
         if event.type == b3.events.EVT_STOP:
-            self.tsDeleteChannels()
+            try:
+                self.tsDeleteChannels()
+            except TS3Error, err:
+                self.error(err)
             self.tsconnection.disconnect()
+            self.connected = False
         elif self.connected is False:
             return
         elif event.type in (b3.events.EVT_CLIENT_SQUAD_CHANGE, b3.events.EVT_CLIENT_TEAM_CHANGE):
@@ -537,7 +544,7 @@ class TeamspeakbfPlugin(b3.plugin.Plugin):
             
     def tsDeleteChannels(self):
         if self.connected:
-            self.tsSendCommand('channeldelete', {'cid': self.tsChannelIdB3})
+            self.tsSendCommand('channeldelete', {'cid': self.tsChannelIdB3, 'force': 1})
             self.tsChannelIdB3 = None
             self.tsChannelIdTeam1 = None
             self.tsChannelIdTeam2 = None
@@ -799,7 +806,7 @@ class ServerQuery():
 
         with self.lock:
             self.telnet.write(telnetCMD)
-            telnetResponse = self.telnet.read_until("msg=ok", self.Timeout)
+            regexp_index, match, telnetResponse = self.telnet.expect([r"(?m)error id=0 msg=ok$", r"(?m)error id=(?P<errorcode>\d+) msg=(?P<msg>.*)$"], self.Timeout)
         telnetResponse = telnetResponse.split(r'error id=')
         notParsedCMDStatus = "id=" + telnetResponse[1]
         notParsedInfo = telnetResponse[0].split('|')
