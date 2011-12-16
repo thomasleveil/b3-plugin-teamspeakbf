@@ -31,8 +31,10 @@
 # 2011/12/14 - 2.1
 # * fix crash when trying to delete TS channels having users
 # * ServerQuery is now more reactive when receiving a error as response
+# 2011/12/16 - 2.2
+# * fixes issue #1 : 'player aren't moved at round start' (requires b3 >= 1.8.0dev15)
 #
-__version__ = '2.1'
+__version__ = '2.2'
 __author__ = 'Courgette'
 
 import b3
@@ -132,7 +134,7 @@ class TeamspeakbfPlugin(b3.plugin.Plugin):
 
         # Register our events
         self.verbose('Registering events')
-        #self.registerEvent(b3.events.EVT_CLIENT_TEAM_CHANGE)
+        self.registerEvent(b3.events.EVT_CLIENT_TEAM_CHANGE)
         self.registerEvent(b3.events.EVT_CLIENT_SQUAD_CHANGE)
         self.registerEvent(b3.events.EVT_CLIENT_AUTH)
     
