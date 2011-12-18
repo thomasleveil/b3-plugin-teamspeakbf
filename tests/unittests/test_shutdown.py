@@ -125,7 +125,7 @@ class Test_shutdown(unittest.TestCase):
                         config.get("teamspeak_server", "login"),
                         config.get("teamspeak_server", "password"))
         except TS3Error, err:
-            raise unittest.skip("could not connect to Teamspeak server : %s" % err)
+            raise unittest.SkipTest("could not connect to Teamspeak server : %s" % err)
 
     def setUp(self):
         for channel in Test_shutdown.ts3.get_channellist():
