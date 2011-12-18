@@ -33,8 +33,10 @@
 # * ServerQuery is now more reactive when receiving a error as response
 # 2011/12/16 - 2.2
 # * fixes issue #1 : 'player aren't moved at round start' (requires b3 >= 1.8.0dev15)
+# 2011/12/18 - 2.3
+# * default switch target (squad or team) can be specified in the config file (thanks to 82ndab-Bravo17)
 #
-__version__ = '2.2'
+__version__ = '2.3'
 __author__ = 'Courgette'
 
 import b3
