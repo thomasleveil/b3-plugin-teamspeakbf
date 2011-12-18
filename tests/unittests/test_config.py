@@ -96,6 +96,26 @@ class Test_config_teamspeakChannels(unittest.TestCase):
         p.readConfig()
         self.assertEqual('team', p.autoswitchDefaultTarget)
 
+    def test_DefaultTarget_off(self):
+        conf = XmlConfigParser()
+        conf.setXml("""
+        <configuration plugin="teamspeakbf">
+        	<settings name="teamspeakServer">
+                <set name="host">foo_host</set>
+                <set name="queryport">foo_queryport</set>
+                <set name="id">1</set>
+                <set name="login">foo_login</set>
+                <set name="password">foo_password</set>
+            </settings>
+            <settings name="teamspeakChannels">
+                <set name="DefaultTarget">off</set>
+            </settings>
+        </configuration>
+        """)
+        p = TeamspeakbfPlugin(fakeConsole, conf)
+        p.readConfig()
+        self.assertEqual('off', p.autoswitchDefaultTarget)
+
 
     def test_fallback_on_default(self):
         conf = XmlConfigParser()

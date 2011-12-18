@@ -54,6 +54,10 @@ Changelog
  2011/12/18 - 2.3
   * default switch target (squad or team) can be specified in the config file (thanks to 82ndab-Bravo17)
 
+ 2011/12/18 - 2.3.1
+  * default switch target can also be 'off'
+
+
 
 Installation
 ------------

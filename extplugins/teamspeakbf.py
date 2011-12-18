@@ -35,8 +35,10 @@
 # * fixes issue #1 : 'player aren't moved at round start' (requires b3 >= 1.8.0dev15)
 # 2011/12/18 - 2.3
 # * default switch target (squad or team) can be specified in the config file (thanks to 82ndab-Bravo17)
+# 2011/12/18 - 2.3.1
+# * default switch target can also be 'off'
 #
-__version__ = '2.3'
+__version__ = '2.3.1'
 __author__ = 'Courgette'
 
 import b3
@@ -216,7 +218,7 @@ class TeamspeakbfPlugin(b3.plugin.Plugin):
 
         try:
             _target = self.config.get('teamspeakChannels', 'DefaultTarget')
-            if _target not in ('team', 'squad'):
+            if _target not in ('team', 'squad', 'off'):
                 self.warning("teamspeakChannels::DefaultTarget : unexpected value '%s'. use 'team' or 'squad'" % _target)
             else:
                 self.autoswitchDefaultTarget = _target
