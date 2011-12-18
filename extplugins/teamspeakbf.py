@@ -211,7 +211,12 @@ class TeamspeakbfPlugin(b3.plugin.Plugin):
             self.info('teamspeakChannels::team2 : \'%s\'' % self.TS3ChannelTeam2)
         except:
             self.info('Cannot get teamspeakChannels::team2 from config file, using default : %s' % self.TS3ChannelTeam2)
-      
+
+        try:
+            self.autoswitchDefaultTarget = self.config.get('teamspeakChannels', 'DefaultTarget')
+            self.info('teamspeakChannels::DefaultTarget : \'%s\'' % self.autoswitchDefaultTarget)
+        except:
+            self.info('Cannot get teamspeakChannels::DefaultTarget from config file, using default : %s' % self.autoswitchDefaultTarget)
       
 
     def onEvent(self, event):
@@ -667,7 +672,7 @@ class TeamspeakbfPlugin(b3.plugin.Plugin):
 
     def tsTellClient(self, clid, msg):
         """Send a private message to a TS3 client"""
-        self.tsSendCommand('sendtextmessage', {'targetmode': 3, 'target': clid, 'msg': "[%s] %s" % (self.console.name, msg)})
+        self.tsSendCommand('sendtextmessage', {'targetmode': 1, 'target': clid, 'msg': "[%s] %s" % (self.console.name, msg)})
 
     
 ##################################################################################################
