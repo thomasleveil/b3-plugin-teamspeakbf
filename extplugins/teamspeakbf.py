@@ -213,7 +213,11 @@ class TeamspeakbfPlugin(b3.plugin.Plugin):
             self.info('Cannot get teamspeakChannels::team2 from config file, using default : %s' % self.TS3ChannelTeam2)
 
         try:
-            self.autoswitchDefaultTarget = self.config.get('teamspeakChannels', 'DefaultTarget')
+            _target = self.config.get('teamspeakChannels', 'DefaultTarget')
+            if _target not in ('team', 'squad'):
+                self.warning("teamspeakChannels::DefaultTarget : unexpected value '%s'. use 'team' or 'squad'" % _target)
+            else:
+                self.autoswitchDefaultTarget = _target
             self.info('teamspeakChannels::DefaultTarget : \'%s\'' % self.autoswitchDefaultTarget)
         except:
             self.info('Cannot get teamspeakChannels::DefaultTarget from config file, using default : %s' % self.autoswitchDefaultTarget)
@@ -605,14 +609,15 @@ class TeamspeakbfPlugin(b3.plugin.Plugin):
             matches_by_ip = []
             matches_by_name = []
 
-            for c in clientlist:
-                clid = c['clid']
-                clients_info[clid] = info = self.tsSendCommand('clientinfo', {'clid': clid})
-                if client.ip and 'connection_client_ip' in info and info['connection_client_ip'] == client.ip:
-                    matches_by_ip.append(clid)
-                nick = info['client_nickname'].lower()
-                if nick in (client.name.lower()):
-                    matches_by_name.append(clid)
+            if clientlist:
+                for c in clientlist:
+                    clid = c['clid']
+                    clients_info[clid] = info = self.tsSendCommand('clientinfo', {'clid': clid})
+                    if client.ip and 'connection_client_ip' in info and info['connection_client_ip'] == client.ip:
+                        matches_by_ip.append(clid)
+                    nick = info['client_nickname'].lower()
+                    if nick in (client.name.lower()):
+                        matches_by_name.append(clid)
 
             found_client_data = None
             if len(matches_by_ip) == 1:
