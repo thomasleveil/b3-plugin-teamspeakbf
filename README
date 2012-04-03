@@ -7,8 +7,15 @@ By Courgette
 Description
 -----------
 
-This plugin will change BFBC2 / BF3 players that are found on your teamspeak
+This plugin will change BFBC2 / BF3 players that are found on your teamspeak 3
 server to the relevant team/squad channel.
+
+
+Requirements
+------------
+
+You must have a Teamspeak 3 server.
+
 
 Player commands
 ---------------
