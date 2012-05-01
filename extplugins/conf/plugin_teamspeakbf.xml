@@ -11,14 +11,22 @@
 		<set name="password">secretTSServerQueryPassword</set>
 	</settings>
 	<settings name="teamspeakChannels">
+        <set name="B3_Channel_Permanent">False</set>
 		<set name="B3">B3 autoswitched channel</set>
 		<set name="team1">Team 1</set>
 		<set name="team2">Team 2</set>
+        <!-- codec = 0-2, codec quality = 0-10 Higher values are better -->
+        <set name="channel_codec">1</set>
+        <set name="channel_codec_quality">7</set>
+        <!-- If this is False then no squad channels will be created -->
+        <set name="AllowSquadChannels">True</set>
+        <!-- If this is True the Red/Blue channels will flip each round to minimize channel changing.-->
+        <set name="SwapChannelsEachRound">True</set>
         <!-- DefaultTarget : will determine between which channels users will be switch to by default.
             Expected values : 'team', 'squad' or 'off'
-            Default value : 'squad'
+            Default value : 'squad' (if allowed by AllowSquadChannels)
         -->
-		<set name="DefaultTarget">squad</set>
+        <set name="DefaultTarget">squad</set>
 	</settings>
 	<settings name="commands">
 		<!-- set here levels needed to be allowed to use commands.

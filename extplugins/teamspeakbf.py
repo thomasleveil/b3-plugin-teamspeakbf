@@ -37,8 +37,16 @@
 # * default switch target (squad or team) can be specified in the config file (thanks to 82ndab-Bravo17)
 # 2011/12/18 - 2.3.1
 # * default switch target can also be 'off'
+# 2012/04/29 - 2.3.2 - 82ndab-Bravo17
+# * Allow main B3 Auto channel to be permanent to preserve TS tree
+# * Allow creation of only Team channels to cut down on number of channels
+# * Allow B3 Team channel flip/flop each round to keep in sync with BF3 Team flip/flop and cut
+# *     down on channel switching
+# * Allow Codec and Voice Quality to be set in the xml
+# 2012/05/01 - 2.4
+# * merges pull request #4 from 82ndab-Bravo17
 #
-__version__ = '2.3.1'
+__version__ = '2.4'
 __author__ = 'Courgette'
 
 import b3
@@ -57,9 +65,16 @@ class TeamspeakbfPlugin(b3.plugin.Plugin):
     TS3ServerID = None
     TS3Login = None
     TS3Password = None
+    B3Channel_Permanent = False
     TS3ChannelB3 = 'B3 autoswitched channels'
     TS3ChannelTeam1 = 'Team A'
     TS3ChannelTeam2 = 'Team B'
+    TS3Channelswap = True
+    TS3AllowSquadChannels = True
+    teamBlue = b3.TEAM_BLUE
+    teamRed = b3.TEAM_RED
+    channel_codec = 1
+    channel_codec_quality = 7
 
     
     tsconnection = None
@@ -141,6 +156,7 @@ class TeamspeakbfPlugin(b3.plugin.Plugin):
         self.registerEvent(b3.events.EVT_CLIENT_TEAM_CHANGE)
         self.registerEvent(b3.events.EVT_CLIENT_SQUAD_CHANGE)
         self.registerEvent(b3.events.EVT_CLIENT_AUTH)
+        self.registerEvent(b3.events.EVT_GAME_ROUND_END)
     
         self.debug('Started')
 
@@ -161,7 +177,7 @@ class TeamspeakbfPlugin(b3.plugin.Plugin):
         try:
             self.tsconnection = ServerQuery(self.TS3ServerIP, self.TS3QueryPort)
             self.tsConnect()
-            self.tsInitChannels()
+            self.tsInitChannels(self.TS3AllowSquadChannels)
             for c in self.console.clients.getList():
                 self.moveClient(c)
         except TS3Error, err:
@@ -196,8 +212,13 @@ class TeamspeakbfPlugin(b3.plugin.Plugin):
         except:
             self.error('Cannot get teamspeak password from config file')
             raise SystemExit('invalid teamspeak configuration')
-      
-        
+
+        try:
+            self.B3Channel_Permanent = self.config.getboolean('teamspeakChannels', 'B#_Chanel_Permanent')
+            self.info('teamspeakChannels::B3 Channel Permanent : \'%s\'' % self.B3Channel_Permanent)
+        except:
+            self.info('Cannot get teamspeakChannels::B3 Channel Permanent from config file, using default : %s' % self.B3Channel_Permanent)
+
         try:
             self.TS3ChannelB3 = self.config.get('teamspeakChannels', 'B3')
             self.info('teamspeakChannels::B3 : \'%s\'' % self.TS3ChannelB3)
@@ -217,14 +238,54 @@ class TeamspeakbfPlugin(b3.plugin.Plugin):
             self.info('Cannot get teamspeakChannels::team2 from config file, using default : %s' % self.TS3ChannelTeam2)
 
         try:
+            self.TS3AllowSquadChannels = self.config.getboolean('teamspeakChannels', 'AllowSquadChannels')
+            self.info('teamspeakChannels::AllowSquadChannels : \'%s\'' % self.TS3AllowSquadChannels)
+        except:
+            self.info('Cannot get teamspeakChannels::AllowSquadChannels from config file, using default : %s' % self.TS3AllowSquadChannels)
+            
+        try:
+            self.channel_codec = self.config.getint('teamspeakChannels', 'channel_codec')
+            if self.channel_codec > 2:
+                self.channel_codec = 2
+            if self.channel_codec < 0:
+                self.channel_codec = 0
+            self.info('teamspeakChannels::codec : \'%s\'' % self.channel_codec)
+        except:
+            self.info('Cannot get teamspeakChannels::codec from config file, using default : %s' % self.channel_codec)
+
+        try:
+            self.channel_codec_quality = self.config.getint('teamspeakChannels', 'channel_codec_quality')
+            if self.channel_codec_quality > 10:
+                self.channel_codec_quality = 10
+            if self.channel_codec_quality < 0:
+                self.channel_codec_quality = 0
+            self.info('teamspeakChannels::codec quality : \'%s\'' % self.channel_codec_quality)
+        except:
+            self.info('Cannot get teamspeakChannels::codec quality from config file, using default : %s' % self.channel_codec_quality)
+
+        try:
             _target = self.config.get('teamspeakChannels', 'DefaultTarget')
             if _target not in ('team', 'squad', 'off'):
                 self.warning("teamspeakChannels::DefaultTarget : unexpected value '%s'. use 'team' or 'squad'" % _target)
             else:
-                self.autoswitchDefaultTarget = _target
+                if _target == 'squad' and not self.TS3AllowSquadChannels:
+                    self.autoswitchDefaultTarget = 'team'
+                    self.info('Squad Channels are not allowed, using Team instead')
+                else:
+                    self.autoswitchDefaultTarget = _target
             self.info('teamspeakChannels::DefaultTarget : \'%s\'' % self.autoswitchDefaultTarget)
         except:
+            if not self.TS3AllowSquadChannels:
+                self.autoswitchDefaultTarget = 'team'
+
             self.info('Cannot get teamspeakChannels::DefaultTarget from config file, using default : %s' % self.autoswitchDefaultTarget)
+
+        try:
+            self.TS3ChannelSwap = self.config.getboolean('teamspeakChannels', 'SwapChannelsEachRound')
+            self.info('teamspeakChannels::SwapChannelsEachRound : \'%s\'' % self.TS3ChannelSwap)
+        except:
+            self.info('Cannot get teamspeakChannels::SwapChannelsEachRound from config file, using default : %s' % self.TS3ChannelSwap)
+
       
 
     def onEvent(self, event):
@@ -262,6 +323,12 @@ class TeamspeakbfPlugin(b3.plugin.Plugin):
                         self.tsTellClient(tsclient['clid'], "Join the \"%s\" channel" % self.TS3ChannelB3)
             except TS3Error, err:
                 self.error(str(err))
+        elif event.type == b3.events.EVT_GAME_ROUND_END:
+            self.debug('Gametype %s, Max rounds %s, Game Round %s' % (self.console.game.gameType, self.console.game.g_maxrounds, self.console.game.rounds))
+            if self.TS3Channelswap:
+                teamTemp = self.teamRed
+                self.teamRed = self.teamBlue
+                self.teamBlue = teamTemp
 
 
     #===============================================================================
@@ -354,6 +421,9 @@ class TeamspeakbfPlugin(b3.plugin.Plugin):
                     infotxt += 'disabled'
                 client.message(infotxt)
             else:
+                if data == 'squad' and not self.TS3AllowSquadChannels:
+                    client.message("Squad Channels not activated, using Team instead")
+                    data = 'team'
                 if data not in ('off', 'team', 'squad'):
                     client.message("Invalid parameter. Expecting one of : 'off', 'team', 'squad'")
                 elif data == 'off':
@@ -364,7 +434,7 @@ class TeamspeakbfPlugin(b3.plugin.Plugin):
                     client.setvar(self, 'switchtarget', 'team')
                     client.message('You will be automatically switched on your team channel')
                     self.moveClient(client)
-                elif data == 'squad':
+                elif data == 'squad' and self.TS3AllowSquadChannels:
                     client.setvar(self, 'autoswitch', True)
                     client.setvar(self, 'switchtarget', 'squad')
                     client.message('You will be automatically switched on your squad channel')
@@ -406,12 +476,13 @@ class TeamspeakbfPlugin(b3.plugin.Plugin):
                         return True
                     else:
                         return False
+
                 if switchtarget == 'team':
                     if not is_squad_death_match():
-                        if client.team == b3.TEAM_BLUE:
+                        if client.team == self.teamBlue:
                             self.debug('moving %s to team1 channel' % client.cid)
                             self.tsMoveTsclientToChannelId(tsclient, self.tsChannelIdTeam1)
-                        elif client.team == b3.TEAM_RED:
+                        elif client.team == self.teamRed:
                             self.debug('moving %s to team2 channel' % client.cid)
                             self.tsMoveTsclientToChannelId(tsclient, self.tsChannelIdTeam2)
                         else:
@@ -419,11 +490,11 @@ class TeamspeakbfPlugin(b3.plugin.Plugin):
                             self.tsMoveTsclientToChannelId(tsclient, self.tsChannelIdB3)
                 elif switchtarget == 'squad':
                     if not is_squad_death_match():
-                        if client.team == b3.TEAM_BLUE:
+                        if client.team == self.teamBlue:
                             self.debug('moving %s to his Team1 squad channel' % client.cid)
                             cid = self.tsChannelIdSquadsTeam1[int(client.squad)]
                             self.tsMoveTsclientToChannelId(tsclient, cid)
-                        elif client.team == b3.TEAM_RED:
+                        elif client.team == self.teamRed:
                             self.debug('moving %s to his Team2 squad channel' % client.cid)
                             cid = self.tsChannelIdSquadsTeam2[int(client.squad)]
                             self.tsMoveTsclientToChannelId(tsclient, cid)
@@ -510,7 +581,7 @@ class TeamspeakbfPlugin(b3.plugin.Plugin):
         self.info('TS server port is %s', self.tsServerPort)
     
     
-    def tsInitChannels(self):
+    def tsInitChannels(self, allowsquad):
         channellist = self.tsSendCommand('channellist')
         self.debug('channellist : %s' % channellist)
         
@@ -519,7 +590,9 @@ class TeamspeakbfPlugin(b3.plugin.Plugin):
             self.info('creating channel [%s]' % self.TS3ChannelB3)
             response = self.tsSendCommand('channelcreate',
                                                               {'channel_name': self.TS3ChannelB3
-                                                               , 'channel_flag_semi_permanent': 1})
+                                                               , 'channel_flag_semi_permanent': 1
+                                                               , 'channel_codec': self.channel_codec
+                                                               , 'channel_codec_quality': self.channel_codec_quality})
             self.debug(response)
             self.tsChannelIdB3 = response['cid']
             
@@ -530,7 +603,9 @@ class TeamspeakbfPlugin(b3.plugin.Plugin):
             response = self.tsSendCommand('channelcreate',
                                                               {'channel_name': self.TS3ChannelTeam1,
                                                                'cpid': self.tsChannelIdB3
-                                                               , 'channel_flag_semi_permanent': 1})
+                                                               , 'channel_flag_semi_permanent': 1
+                                                               , 'channel_codec': self.channel_codec
+                                                               , 'channel_codec_quality': self.channel_codec_quality})
             self.debug(response)
             self.tsChannelIdTeam1 = response['cid']
         self.tsChannelIdSquadsTeam1[0] = self.tsChannelIdTeam1
@@ -541,25 +616,33 @@ class TeamspeakbfPlugin(b3.plugin.Plugin):
             response = self.tsSendCommand('channelcreate',
                                                               {'channel_name': self.TS3ChannelTeam2,
                                                                'cpid': self.tsChannelIdB3
-                                                               , 'channel_flag_semi_permanent': 1})
+                                                               , 'channel_flag_semi_permanent': 1
+                                                               , 'channel_codec': self.channel_codec
+                                                               , 'channel_codec_quality': self.channel_codec_quality})
             self.debug(response)
             self.tsChannelIdTeam2 = response['cid']
         self.tsChannelIdSquadsTeam2[0] = self.tsChannelIdTeam2
         
-        for i in range(1, 9):
-            self.tsChannelIdSquadsTeam1[i] = self.tsGetChannelIdByName(self.squadNames[i], channellist, self.tsChannelIdTeam1)
-            if self.tsChannelIdSquadsTeam1[i] is None:
-                self.info('creating squad-channel [%s] for team1' % self.squadNames[i])
-                self.tsChannelIdSquadsTeam1[i] = self.tsCreateSubChannel(self.squadNames[i], self.tsChannelIdTeam1)
+        if allowsquad:
+            for i in range(1, 9):
+                self.tsChannelIdSquadsTeam1[i] = self.tsGetChannelIdByName(self.squadNames[i], channellist, self.tsChannelIdTeam1)
+                if self.tsChannelIdSquadsTeam1[i] is None:
+                    self.info('creating squad-channel [%s] for team1' % self.squadNames[i])
+                    self.tsChannelIdSquadsTeam1[i] = self.tsCreateSubChannel(self.squadNames[i], self.tsChannelIdTeam1)
         
-            self.tsChannelIdSquadsTeam2[i] = self.tsGetChannelIdByName(self.squadNames[i], channellist, self.tsChannelIdTeam2)
-            if self.tsChannelIdSquadsTeam2[i] is None:
-                self.info('creating squad-channel [%s] for team2' % self.squadNames[i])
-                self.tsChannelIdSquadsTeam2[i] = self.tsCreateSubChannel(self.squadNames[i], self.tsChannelIdTeam2)
+                self.tsChannelIdSquadsTeam2[i] = self.tsGetChannelIdByName(self.squadNames[i], channellist, self.tsChannelIdTeam2)
+                if self.tsChannelIdSquadsTeam2[i] is None:
+                    self.info('creating squad-channel [%s] for team2' % self.squadNames[i])
+                    self.tsChannelIdSquadsTeam2[i] = self.tsCreateSubChannel(self.squadNames[i], self.tsChannelIdTeam2)
             
     def tsDeleteChannels(self):
         if self.connected:
-            self.tsSendCommand('channeldelete', {'cid': self.tsChannelIdB3, 'force': 1})
+            if self.B3Channel_Permanent:
+                self.tsSendCommand('channeldelete', {'cid': self.tsChannelIdTeam1, 'force': 1})
+                self.tsSendCommand('channeldelete', {'cid': self.tsChannelITeam2, 'force': 1})
+            else:
+                self.tsSendCommand('channeldelete', {'cid': self.tsChannelIdB3, 'force': 1})
+
             self.tsChannelIdB3 = None
             self.tsChannelIdTeam1 = None
             self.tsChannelIdTeam2 = None
@@ -588,7 +671,9 @@ class TeamspeakbfPlugin(b3.plugin.Plugin):
         response = self.tsSendCommand('channelcreate',
                                   {'channel_name': channelName,
                                    'cpid': parentChannelId
-                                   , 'channel_flag_semi_permanent': 1})
+                                   , 'channel_flag_semi_permanent': 1
+                                   , 'channel_codec': self.channel_codec
+                                   , 'channel_codec_quality': self.channel_codec_quality})
         return response['cid']
 
             
