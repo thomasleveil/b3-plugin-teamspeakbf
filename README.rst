@@ -97,13 +97,13 @@ Installation
 To install the plugin follow the steps below:
 
 1. copy teamspeakbf.py into ``b3/extplugins``
-2. copy ``plugin_teamspeakbf.xml`` into your B3 conf folder
+2. copy ``plugin_teamspeakbf.xml`` into your main B3 conf folder
 3. set up your TeamSpeak server to enable ServerQuery
 4. add the IP address of the machine running B3 to your TeamSpeak server ``query_ip_whitelist.txt`` file
 5. edit ``plugin_teamspeakbf.xml`` with your teamspeak server information
 6. update your main b3 config file with::
 
-    <plugin name="teamspeakbf" config="@conf/extplugins/plugin_teamspeakbf.xml"/>
+    <plugin name="teamspeakbf" config="@conf/plugin_teamspeakbf.xml"/>
 
 
 Support
